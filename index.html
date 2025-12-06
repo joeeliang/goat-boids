@@ -1,52 +1,216 @@
 <!DOCTYPE html>
-<html>
-  <head>
+<html lang="en">
+<head>
     <meta charset="utf-8"/>
-    <title>Goat Herd Simulation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goat Boids - Herd Behavior Simulation</title>
+    <link rel="stylesheet" href="styles.css">
     <script src="./boids.js"></script>
-    <style type="text/css">
-      body {
-        margin: 0;
-        background: #282c34;
-        overflow: hidden;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      }
-      #ui-overlay {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        pointer-events: none;
-        z-index: 100;
-      }
-      #mode-indicator {
-        font-size: 18px;
-        font-weight: bold;
-        margin-bottom: 8px;
-      }
-      .attract-mode {
-        color: #4CAF50;
-      }
-      .avoid-mode {
-        color: #F44336;
-      }
-      .instruction {
-        font-size: 12px;
-        color: #aaa;
-        margin-top: 5px;
-      }
-    </style>
-  </head>
-  <body>
-    <canvas id="boids" width="150" height="150"></canvas>
-    <div id="ui-overlay">
-      <div id="mode-indicator" class="attract-mode">🍃 ATTRACT MODE</div>
-      <div class="instruction">Move mouse: Control treat position</div>
-      <div class="instruction">Press SPACE: Toggle attract/avoid</div>
-    </div>
-  </body>
+</head>
+<body>
+    <!-- Header Section -->
+    <header id="header">
+        <h1>Goat Boids: A Herd Behavior Simulation</h1>
+        <p class="subtitle">Exploring emergent collective behavior through computational modeling</p>
+    </header>
+
+    <!-- Simulation Section -->
+    <section id="simulation-section">
+        <canvas id="boids" width="150" height="150"></canvas>
+        <div id="ui-overlay">
+            <div id="mode-indicator" class="attract-mode">🍃 ATTRACT MODE</div>
+            <div class="instruction">Move mouse: Control treat position</div>
+            <div class="instruction">Press SPACE: Toggle attract/avoid</div>
+            <div class="instruction">Click & drag: Draw fences</div>
+        </div>
+        <div class="scroll-indicator">
+            <p>Scroll down to learn more ↓</p>
+        </div>
+    </section>
+
+    <!-- Video Section -->
+    <section id="video-section">
+        <div class="section-header">
+            <h2>Real Goat Behavior</h2>
+            <p>Compare the simulation above with actual goat herding footage</p>
+        </div>
+        <div class="video-container">
+            <iframe
+                width="100%"
+                height="100%"
+                src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                title="Goat Herding Video"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen>
+            </iframe>
+            <p class="video-note">Replace the YouTube URL in index.html with your preferred goat simulation video</p>
+        </div>
+    </section>
+
+    <!-- Information Section -->
+    <section id="info-section">
+        <div class="content-wrapper">
+            <h2>How the Simulation Works</h2>
+
+            <article>
+                <h3>Boids Algorithm</h3>
+                <p>
+                    The term "boids" was coined by Craig Reynolds in 1986 to describe his algorithm for simulating
+                    the flocking behavior of birds. The same principles apply remarkably well to ground-based herding
+                    animals like goats and sheep. The simulation creates complex, lifelike group behavior from just
+                    a few simple rules that each individual follows independently.
+                </p>
+                <p>
+                    This implementation adapts the classic boids algorithm specifically for ground animals, incorporating
+                    realistic constraints such as limited field of view (270 degrees - goats cannot see directly behind
+                    themselves), angle-based orientation, and smooth turning mechanics that reflect the physical
+                    limitations of quadrupedal movement.
+                </p>
+            </article>
+
+            <article>
+                <h3>Core Behavioral Rules</h3>
+                <p>
+                    The simulation operates on three fundamental rules that govern how each goat moves in relation
+                    to its neighbors:
+                </p>
+                <ul>
+                    <li>
+                        <strong>Separation:</strong> Goats maintain personal space and actively avoid crowding their
+                        immediate neighbors. When another goat gets too close (within 35 pixels), a repulsion force
+                        is applied, causing the goat to turn away and speed up slightly. This prevents collisions
+                        and maintains realistic spacing within the herd.
+                    </li>
+                    <li>
+                        <strong>Alignment:</strong> Each goat attempts to match the heading of nearby goats it can
+                        see. By averaging the direction of visible neighbors within a 120-pixel visual range, goats
+                        naturally synchronize their movement, creating the flowing, coordinated motion characteristic
+                        of real herds.
+                    </li>
+                    <li>
+                        <strong>Cohesion:</strong> Goats are drawn toward the center of their visible neighbors,
+                        preventing the herd from dispersing. This social attraction keeps isolated individuals moving
+                        back toward the group while maintaining the overall herd structure.
+                    </li>
+                </ul>
+            </article>
+
+            <article>
+                <h3>Vision and Field of View</h3>
+                <p>
+                    Unlike simpler boid implementations, this simulation incorporates a realistic field of view system.
+                    Each goat has a 270-degree vision cone extending forward and to the sides, but cannot see directly
+                    behind itself. This creates more natural behavior where goats may temporarily lose track of herd
+                    mates behind them, leading to interesting emergent patterns as they turn to rejoin the group.
+                </p>
+                <p>
+                    Additionally, the simulation includes line-of-sight blocking by boundary fences. Goats cannot see
+                    through the enclosure walls, which affects their cohesion and alignment calculations. This creates
+                    realistic behavior near boundaries where goats may spread out more than in open areas of the enclosure.
+                </p>
+            </article>
+
+            <article>
+                <h3>Movement Mechanics</h3>
+                <p>
+                    The goats move with angle-based physics that simulate realistic quadrupedal locomotion. Each animal
+                    has a heading (direction) and speed, with constraints on how quickly they can turn (maximum turn
+                    rate of 0.12 radians per frame). This prevents unrealistic instant direction changes and creates
+                    smooth, arc-like turning patterns.
+                </p>
+                <p>
+                    Speed is variable and contextual: goats accelerate when avoiding threats or chasing treats, slow
+                    down after fence collisions, and experience continuous friction that brings them back to a natural
+                    cruising speed. A forward bias parameter encourages goats to maintain their current heading,
+                    reducing jittery behavior and creating more purposeful movement.
+                </p>
+            </article>
+
+            <article>
+                <h3>Boundary Behavior</h3>
+                <p>
+                    The simulation implements a sophisticated two-layer boundary system. A soft boundary (100 pixels
+                    from the edge) applies gentle turning forces that encourage goats to head back toward the center.
+                    A hard boundary (20 pixels from the edge) acts as an impenetrable fence, clamping position to
+                    prevent any crossing.
+                </p>
+                <p>
+                    User-drawn fences use segment intersection detection. When a goat's movement path intersects with
+                    a fence, the collision is detected and the goat's heading is reflected across the fence angle,
+                    similar to a ball bouncing off a wall. The goat is also nudged away from the fence slightly and
+                    its speed is reduced, creating a realistic bouncing behavior.
+                </p>
+            </article>
+
+            <article>
+                <h3>Interactive Features</h3>
+                <p>
+                    The simulation includes several interactive elements that demonstrate behavioral flexibility:
+                </p>
+                <ul>
+                    <li>
+                        <strong>Treat Mode:</strong> Moving the mouse creates an attractant that goats will move toward,
+                        accelerating as they approach. The effect diminishes with distance (up to 200 pixels) and can
+                        influence large portions of the herd, creating waves of movement.
+                    </li>
+                    <li>
+                        <strong>Avoid Mode:</strong> Pressing spacebar toggles to avoidance mode, where the mouse cursor
+                        becomes a threat. Goats will flee from the cursor, with even stronger acceleration than in
+                        attract mode, simulating a panic response.
+                    </li>
+                    <li>
+                        <strong>Fence Drawing:</strong> Click and drag to draw custom fences. Goats will collide with
+                        and bounce off these barriers, and they also block line of sight, affecting herd cohesion
+                        calculations on either side of the fence.
+                    </li>
+                </ul>
+            </article>
+
+            <article>
+                <h3>Emergent Behavior</h3>
+                <p>
+                    The beauty of the boids algorithm lies in emergence - complex group behaviors that arise from
+                    simple individual rules. In this simulation, you may observe herds splitting and merging around
+                    obstacles, wave-like patterns propagating through the group in response to disturbances, and
+                    natural-looking swirling patterns as goats negotiate the competing forces of separation, alignment,
+                    and cohesion.
+                </p>
+                <p>
+                    These patterns closely mirror observations of real goat and sheep herds, demonstrating how
+                    sophisticated collective behavior does not require centralized coordination or complex individual
+                    intelligence. Each goat operates independently with no knowledge of the overall herd structure,
+                    yet the group exhibits coordinated, purposeful movement.
+                </p>
+            </article>
+
+            <article>
+                <h3>Technical Implementation</h3>
+                <p>
+                    The simulation runs in JavaScript using HTML5 Canvas for rendering. Each frame, every goat
+                    calculates behavioral forces (separation, alignment, cohesion, boundary avoidance, and treat
+                    response) which modify its angular velocity. After applying turn rate limits and forward bias,
+                    the heading is updated and used to calculate the new position based on current speed.
+                </p>
+                <p>
+                    Fence collision detection uses line segment intersection tests, comparing the goat's movement
+                    vector against all fence segments. The simulation maintains 60 frames per second performance
+                    with 400 goats through efficient neighbor queries (vision-limited rather than checking all pairs)
+                    and optimized trigonometric calculations.
+                </p>
+            </article>
+
+            <div class="credits">
+                <p><em>
+                    This simulation demonstrates principles from Craig Reynolds' original boids algorithm (1986),
+                    adapted for ground-based herding animals with realistic vision and movement constraints.
+                </em></p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>Goat Boids Simulation | Computational Modeling of Collective Behavior</p>
+    </footer>
+</body>
 </html>
