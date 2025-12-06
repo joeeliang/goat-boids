@@ -7,7 +7,7 @@ let width = 150;
 let height = 150;
 
 // Simulation parameters
-const numAnimals = 400;
+const numAnimals = 200;
 const visualRange = 120; // How far animals can see
 const fieldOfView = 270 * (Math.PI / 180); // 270 degree FOV (can't see directly behind)
 
@@ -640,7 +640,7 @@ function animationLoop() {
 
 // Initialize on page load
 window.onload = () => {
-  const canvas = document.getElementById("boids");
+  canvas = document.getElementById("boids");
   window.addEventListener("resize", sizeCanvas, false);
   sizeCanvas();
   setupFenceDrawing();
