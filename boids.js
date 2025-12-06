@@ -1,12 +1,13 @@
-// Ground Animal Herd Simulation (Goats/Sheep)
+// Ground Animal Herd Simulation (Goats/Sheep) with Drawable Fences
 // Uses angle-based orientation and field of view
 
-// Canvas dimensions
+// Canvas and dimensions
+let canvas = null;
 let width = 150;
 let height = 150;
 
 // Simulation parameters
-const numAnimals = 60;
+const numAnimals = 400;
 const visualRange = 120; // How far animals can see
 const fieldOfView = 270 * (Math.PI / 180); // 270 degree FOV (can't see directly behind)
 
@@ -26,8 +27,123 @@ const defaultSpeed = 2.5;
 
 var animals = [];
 
+// --- Fences -----------------------------------------------------------------
+// Each fence is a segment: { x1, y1, x2, y2 }
+let fences = [];
+let isDrawingFence = false;
+let lastFencePoint = null;
+
+function getMousePos(canvas, evt) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (evt.clientX - rect.left),
+    y: (evt.clientY - rect.top)
+  };
+}
+
+function setupFenceDrawing() {
+  canvas.addEventListener("mousedown", (e) => {
+    isDrawingFence = true;
+    lastFencePoint = getMousePos(canvas, e);
+  });
+
+  canvas.addEventListener("mousemove", (e) => {
+    if (!isDrawingFence || !lastFencePoint) return;
+    const pos = getMousePos(canvas, e);
+
+    const dx = pos.x - lastFencePoint.x;
+    const dy = pos.y - lastFencePoint.y;
+
+    // Only add a new segment if we've moved a little (to avoid tons of tiny segments)
+    if (dx * dx + dy * dy > 9) { // ~3px
+      fences.push({
+        x1: lastFencePoint.x,
+        y1: lastFencePoint.y,
+        x2: pos.x,
+        y2: pos.y
+      });
+      lastFencePoint = pos;
+    }
+  });
+
+  const endDrawing = () => {
+    isDrawingFence = false;
+    lastFencePoint = null;
+  };
+
+  canvas.addEventListener("mouseup", endDrawing);
+  canvas.addEventListener("mouseleave", endDrawing);
+}
+
+function drawFences(ctx) {
+  if (fences.length === 0) return;
+  ctx.save();
+  ctx.strokeStyle = "#5a3b1a"; // fence color
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (const f of fences) {
+    ctx.moveTo(f.x1, f.y1);
+    ctx.lineTo(f.x2, f.y2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Segment intersection helpers
+function ccw(ax, ay, bx, by, cx, cy) {
+  return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
+}
+
+function segmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
+  return (
+    ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4) &&
+    ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4)
+  );
+}
+
+function getCollidingFence(x1, y1, x2, y2) {
+  for (const fence of fences) {
+    if (
+      segmentsIntersect(
+        x1,
+        y1,
+        x2,
+        y2,
+        fence.x1,
+        fence.y1,
+        fence.x2,
+        fence.y2
+      )
+    ) {
+      return fence;
+    }
+  }
+  return null;
+}
+
+function handleFenceCollision(animal, fence) {
+  // Reflect direction across the fence
+  const fx = fence.x2 - fence.x1;
+  const fy = fence.y2 - fence.y1;
+  const fenceAngle = Math.atan2(fy, fx);
+
+  // Reflection formula for angles
+  const newHeading = 2 * fenceAngle - animal.heading;
+  animal.heading = normalizeAngle(newHeading);
+
+  // Slow down a bit on impact
+  animal.speed *= 0.4;
+
+  // Nudge slightly away from fence to avoid getting stuck
+  animal.x += Math.cos(animal.heading) * 2;
+  animal.y += Math.sin(animal.heading) * 2;
+}
+
+// ---------------------------------------------------------------------------
 // Initialize animals with position, heading, and speed
 function initAnimals() {
+  animals = [];
   for (var i = 0; i < numAnimals; i += 1) {
     animals.push({
       x: Math.random() * width,
@@ -87,7 +203,6 @@ function getVisibleNeighbors(animal) {
 
 // Resize canvas to fill window
 function sizeCanvas() {
-  const canvas = document.getElementById("boids");
   width = window.innerWidth;
   height = window.innerHeight;
   canvas.width = width;
@@ -257,7 +372,7 @@ function drawAnimal(ctx, animal) {
   ctx.rotate(animal.heading);
 
   // Body (rounded rectangle for sheep/goat)
-  ctx.fillStyle = "#e8d5b7"; // Tan/cream color for goat
+  ctx.fillStyle = "#e8d5b7"; // Tan/cream color for goat/sheep
   ctx.beginPath();
   ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -311,11 +426,11 @@ function animationLoop() {
     animal.angularVelocity = 0;
 
     // Apply behavior rules (order matters!)
-    separate(animal); // Highest priority - avoid collisions
+    separate(animal);           // Highest priority - avoid collisions
     alignWithNeighbors(animal); // Match neighbors' heading
-    moveTowardCenter(animal); // Stay with the group
-    keepWithinBounds(animal); // Stay on screen
-    applyForwardBias(animal); // Prefer moving straight
+    moveTowardCenter(animal);   // Stay with the group
+    keepWithinBounds(animal);   // Stay on screen
+    applyForwardBias(animal);   // Prefer moving straight
 
     // Apply constraints
     limitTurnRate(animal);
@@ -325,9 +440,20 @@ function animationLoop() {
     animal.heading += animal.angularVelocity;
     animal.heading = normalizeAngle(animal.heading);
 
-    // Update position based on heading and speed
-    animal.x += Math.cos(animal.heading) * animal.speed;
-    animal.y += Math.sin(animal.heading) * animal.speed;
+    // Compute desired new position
+    const newX = animal.x + Math.cos(animal.heading) * animal.speed;
+    const newY = animal.y + Math.sin(animal.heading) * animal.speed;
+
+    // Check fence collision along the movement segment
+    const hitFence = getCollidingFence(animal.x, animal.y, newX, newY);
+    if (hitFence) {
+      // Handle bounce and do NOT move through the fence
+      handleFenceCollision(animal, hitFence);
+    } else {
+      // No collision, move normally
+      animal.x = newX;
+      animal.y = newY;
+    }
 
     // Update history for trail
     animal.history.push([animal.x, animal.y]);
@@ -335,9 +461,13 @@ function animationLoop() {
   }
 
   // Clear canvas and redraw
-  const ctx = document.getElementById("boids").getContext("2d");
+  const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
 
+  // Draw fences behind animals
+  drawFences(ctx);
+
+  // Draw animals
   for (let animal of animals) {
     drawAnimal(ctx, animal);
   }
@@ -348,8 +478,10 @@ function animationLoop() {
 
 // Initialize on page load
 window.onload = () => {
+  canvas = document.getElementById("boids");
   window.addEventListener("resize", sizeCanvas, false);
   sizeCanvas();
+  setupFenceDrawing();
   initAnimals();
   window.requestAnimationFrame(animationLoop);
 };
