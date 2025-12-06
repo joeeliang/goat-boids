@@ -141,6 +141,11 @@ function handleFenceCollision(animal, fence) {
 }
 
 // ---------------------------------------------------------------------------
+// Mouse/treat tracking
+var mousePos = { x: null, y: null };
+var treatMode = 'attract'; // 'attract' or 'avoid'
+var treatActive = false; // Whether treat is currently active
+
 // Initialize animals with position, heading, and speed
 function initAnimals() {
   animals = [];
@@ -183,6 +188,58 @@ function isInFieldOfView(relativeAngle) {
   return absAngle <= fieldOfView / 2;
 }
 
+// Check if line of sight between two points is blocked by fences
+function isLineOfSightBlocked(x1, y1, x2, y2) {
+  const fenceMargin = 20; // Same as hardMargin in keepWithinBounds
+
+  // Check intersection with each fence (boundary)
+  // Left fence (x = fenceMargin)
+  if (lineIntersectsVerticalLine(x1, y1, x2, y2, fenceMargin)) return true;
+
+  // Right fence (x = width - fenceMargin)
+  if (lineIntersectsVerticalLine(x1, y1, x2, y2, width - fenceMargin)) return true;
+
+  // Top fence (y = fenceMargin)
+  if (lineIntersectsHorizontalLine(x1, y1, x2, y2, fenceMargin)) return true;
+
+  // Bottom fence (y = height - fenceMargin)
+  if (lineIntersectsHorizontalLine(x1, y1, x2, y2, height - fenceMargin)) return true;
+
+  return false;
+}
+
+// Check if line segment (x1,y1)-(x2,y2) intersects vertical line at x=lineX
+function lineIntersectsVerticalLine(x1, y1, x2, y2, lineX) {
+  // If both points are on the same side of the line, no intersection
+  if ((x1 < lineX && x2 < lineX) || (x1 > lineX && x2 > lineX)) return false;
+
+  // If line segment is vertical, check if it's on the fence
+  if (x1 === x2) return x1 === lineX;
+
+  // Calculate y coordinate where the line crosses lineX
+  const t = (lineX - x1) / (x2 - x1);
+  const y = y1 + t * (y2 - y1);
+
+  // Check if intersection point is between the two points
+  return t >= 0 && t <= 1 && y >= 0 && y <= height;
+}
+
+// Check if line segment (x1,y1)-(x2,y2) intersects horizontal line at y=lineY
+function lineIntersectsHorizontalLine(x1, y1, x2, y2, lineY) {
+  // If both points are on the same side of the line, no intersection
+  if ((y1 < lineY && y2 < lineY) || (y1 > lineY && y2 > lineY)) return false;
+
+  // If line segment is horizontal, check if it's on the fence
+  if (y1 === y2) return y1 === lineY;
+
+  // Calculate x coordinate where the line crosses lineY
+  const t = (lineY - y1) / (y2 - y1);
+  const x = x1 + t * (x2 - x1);
+
+  // Check if intersection point is between the two points
+  return t >= 0 && t <= 1 && x >= 0 && x <= width;
+}
+
 // Check if animal2 is visible to animal1 (within range and FOV)
 function isVisible(animal1, animal2) {
   if (animal1 === animal2) return false;
@@ -193,7 +250,12 @@ function isVisible(animal1, animal2) {
   const angleToTarget = angleTo(animal1, animal2);
   const relativeAngle = normalizeAngle(angleToTarget - animal1.heading);
 
-  return isInFieldOfView(relativeAngle);
+  if (!isInFieldOfView(relativeAngle)) return false;
+
+  // Check if line of sight is blocked by a fence
+  if (isLineOfSightBlocked(animal1.x, animal1.y, animal2.x, animal2.y)) return false;
+
+  return true;
 }
 
 // Get all visible neighbors for an animal
@@ -210,23 +272,25 @@ function sizeCanvas() {
 }
 
 // Keep animals within bounds with smooth turning
+// Allows touching the fence but prevents crossing
 function keepWithinBounds(animal) {
-  const margin = 150;
-  const turnForce = 0.08;
+  const softMargin = 100; // Start gentle turning at this distance
+  const hardMargin = 20; // Hard boundary - cannot cross
+  const turnForce = 0.05; // Gentler turn force
 
   let desiredHeading = null;
 
-  // Calculate desired heading to stay within bounds
-  if (animal.x < margin) {
+  // Soft boundary - gentle steering
+  if (animal.x < softMargin) {
     desiredHeading = 0; // Head right
-  } else if (animal.x > width - margin) {
+  } else if (animal.x > width - softMargin) {
     desiredHeading = Math.PI; // Head left
   }
 
-  if (animal.y < margin) {
+  if (animal.y < softMargin) {
     const headDown = Math.PI / 2;
     desiredHeading = desiredHeading === null ? headDown : (desiredHeading + headDown) / 2;
-  } else if (animal.y > height - margin) {
+  } else if (animal.y > height - softMargin) {
     const headUp = -Math.PI / 2;
     desiredHeading = desiredHeading === null ? headUp : (desiredHeading + headUp) / 2;
   }
@@ -235,6 +299,12 @@ function keepWithinBounds(animal) {
     const angleDiff = normalizeAngle(desiredHeading - animal.heading);
     animal.angularVelocity += angleDiff * turnForce;
   }
+
+  // Hard boundary - prevent crossing (clamp position)
+  if (animal.x < hardMargin) animal.x = hardMargin;
+  if (animal.x > width - hardMargin) animal.x = width - hardMargin;
+  if (animal.y < hardMargin) animal.y = hardMargin;
+  if (animal.y > height - hardMargin) animal.y = height - hardMargin;
 }
 
 // Separation: Strongly repel from nearby animals
@@ -327,6 +397,38 @@ function applyForwardBias(animal) {
   animal.angularVelocity *= forwardBias;
 }
 
+// Treat behavior - attract or repel from mouse position
+function treatBehavior(animal) {
+  if (!treatActive || mousePos.x === null || mousePos.y === null) return;
+
+  const treatRange = 200; // Distance within which treat affects animals
+  const treatForce = 0.15; // Strength of treat attraction/repulsion
+
+  const dx = mousePos.x - animal.x;
+  const dy = mousePos.y - animal.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < treatRange && dist > 0) {
+    let desiredHeading;
+
+    if (treatMode === 'attract') {
+      // Move toward the treat
+      desiredHeading = Math.atan2(dy, dx);
+      // Speed up when chasing treat
+      animal.speed += 0.2;
+    } else {
+      // Avoid the "threat"
+      desiredHeading = Math.atan2(-dy, -dx);
+      // Speed up when fleeing
+      animal.speed += 0.4;
+    }
+
+    const angleDiff = normalizeAngle(desiredHeading - animal.heading);
+    const distanceFactor = 1 - (dist / treatRange); // Stronger effect when closer
+    animal.angularVelocity += angleDiff * treatForce * distanceFactor;
+  }
+}
+
 // Limit turn rate - animals can't turn instantly
 function limitTurnRate(animal) {
   if (animal.angularVelocity > maxTurnRate) {
@@ -351,6 +453,23 @@ function manageSpeed(animal) {
 
 const DRAW_TRAIL = false;
 const DRAW_FOV = false; // Set to true to visualize field of view
+
+// Update UI to show current mode
+function updateUI() {
+  const modeIndicator = document.getElementById('mode-indicator');
+  if (modeIndicator) {
+    if (treatMode === 'attract') {
+      modeIndicator.textContent = '🍃 ATTRACT MODE';
+      modeIndicator.className = 'attract-mode';
+    } else {
+      modeIndicator.textContent = '⚠️ AVOID MODE';
+      modeIndicator.className = 'avoid-mode';
+    }
+  }
+
+  const modeText = treatMode === 'attract' ? '🍃 ATTRACT MODE' : '⚠️ AVOID MODE';
+  document.title = `Goat Herd Simulation - ${modeText}`;
+}
 
 function drawAnimal(ctx, animal) {
   ctx.save();
@@ -426,7 +545,8 @@ function animationLoop() {
     animal.angularVelocity = 0;
 
     // Apply behavior rules (order matters!)
-    separate(animal);           // Highest priority - avoid collisions
+    separate(animal); // Highest priority - avoid collisions
+    treatBehavior(animal); // Treat attraction/avoidance
     alignWithNeighbors(animal); // Match neighbors' heading
     moveTowardCenter(animal);   // Stay with the group
     keepWithinBounds(animal);   // Stay on screen
@@ -468,6 +588,48 @@ function animationLoop() {
   drawFences(ctx);
 
   // Draw animals
+  // Draw treat indicator if active
+  if (treatActive && mousePos.x !== null && mousePos.y !== null) {
+    ctx.save();
+
+    // Draw range circle
+    ctx.strokeStyle = treatMode === 'attract' ? '#4CAF5040' : '#F4433640';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mousePos.x, mousePos.y, 200, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw treat/threat indicator
+    if (treatMode === 'attract') {
+      // Draw a green leaf/treat
+      ctx.fillStyle = '#4CAF50';
+      ctx.beginPath();
+      ctx.arc(mousePos.x, mousePos.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#2E7D32';
+      ctx.beginPath();
+      ctx.arc(mousePos.x - 3, mousePos.y - 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Draw a red warning triangle
+      ctx.fillStyle = '#F44336';
+      ctx.beginPath();
+      ctx.moveTo(mousePos.x, mousePos.y - 10);
+      ctx.lineTo(mousePos.x - 8, mousePos.y + 8);
+      ctx.lineTo(mousePos.x + 8, mousePos.y + 8);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#FFF';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', mousePos.x, mousePos.y + 4);
+    }
+
+    ctx.restore();
+  }
+
   for (let animal of animals) {
     drawAnimal(ctx, animal);
   }
@@ -478,10 +640,36 @@ function animationLoop() {
 
 // Initialize on page load
 window.onload = () => {
-  canvas = document.getElementById("boids");
+  const canvas = document.getElementById("boids");
   window.addEventListener("resize", sizeCanvas, false);
   sizeCanvas();
   setupFenceDrawing();
   initAnimals();
+
+  // Mouse tracking for treat feature
+  canvas.addEventListener("mousemove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mousePos.x = e.clientX - rect.left;
+    mousePos.y = e.clientY - rect.top;
+    treatActive = true;
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    treatActive = false;
+    mousePos.x = null;
+    mousePos.y = null;
+  });
+
+  // Toggle treat mode with spacebar
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      treatMode = treatMode === 'attract' ? 'avoid' : 'attract';
+      console.log(`Treat mode: ${treatMode}`);
+      updateUI();
+    }
+  });
+
+  updateUI();
   window.requestAnimationFrame(animationLoop);
 };
